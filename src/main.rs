@@ -77,19 +77,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let uri_str = uri_binding.as_str();
     println!("Screenshot captured! URI: {}", uri_str);
 
-    // 6. Convert URI to a file path and copy the file
+    // 6. Decode the URI and read the image data into memory
     let path_str = uri_str.strip_prefix("file://").unwrap();
     let decoded_path = urlencoding::decode(path_str)?.into_owned();
     let source_path = std::path::PathBuf::from(decoded_path);
 
-    let dest_dir = "target/monitors";
-    fs::create_dir_all(dest_dir)?;
-    let dest_filename = generate_filename();
-    let dest_path = std::path::Path::new(dest_dir).join(dest_filename);
+    let image_data = fs::read(&source_path)?;
 
-    fs::copy(&source_path, &dest_path)?;
+    // 7. Clean up the temporary file created by the portal
+    fs::remove_file(&source_path)?;
 
-    println!("Screenshot saved to: {}", dest_path.display());
+    println!(
+        "Successfully loaded screenshot into memory ({} bytes).",
+        image_data.len()
+    );
 
     Ok(())
 }
