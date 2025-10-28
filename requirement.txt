@@ -1,0 +1,1 @@
+sudo dnf install pkgconf clang libxcb-devel libXrandr-devel dbus-devel pipewire-devel wayland-devel mesa-libEGL-devel mesa-libgbm-devel
