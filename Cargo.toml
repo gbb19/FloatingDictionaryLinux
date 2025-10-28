@@ -1,0 +1,11 @@
+[package]
+name = "hello-world"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+zbus = "4"
+rand = "0.8.5"
+futures-util = "0.3"
+urlencoding = "2.1.3"
