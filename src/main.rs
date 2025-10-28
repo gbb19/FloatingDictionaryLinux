@@ -9,19 +9,26 @@ use zbus::Connection;
 // App struct for the egui UI
 struct OcrApp {
     text: String,
+    has_gained_focus: bool,
 }
 
 impl eframe::App for OcrApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Close the window if it loses focus, approximating a "close on click outside" behavior.
+        let is_focused = ctx.input(|i| i.focused);
+        if !self.has_gained_focus && is_focused {
+            self.has_gained_focus = true;
+        }
+        if self.has_gained_focus && !is_focused {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("OCR Result");
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
-                // Use a mutable reference to the text for the TextEdit
-                ui.add_sized(
-                    ui.available_size(),
-                    egui::TextEdit::multiline(&mut self.text).font(egui::TextStyle::Monospace),
-                );
+                // Use a Label for non-editable, selectable text.
+                ui.label(self.text.clone());
             });
         });
     }
@@ -40,7 +47,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eframe::run_native(
         "OCR Result",
         options,
-        Box::new(|_cc| Ok(Box::new(OcrApp { text: ocr_text }))),
+        Box::new(|_cc| {
+            Ok(Box::new(OcrApp {
+                text: ocr_text,
+                has_gained_focus: false,
+            }))
+        }),
     )?;
 
     Ok(())
