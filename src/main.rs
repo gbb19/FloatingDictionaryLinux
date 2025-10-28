@@ -1,3 +1,4 @@
+use eframe::egui;
 use futures_util::stream::StreamExt;
 use rand::Rng;
 use std::collections::HashMap;
@@ -5,12 +6,50 @@ use std::fs;
 use zbus::zvariant::{ObjectPath, Str, Value};
 use zbus::Connection;
 
+// App struct for the egui UI
+struct OcrApp {
+    text: String,
+}
+
+impl eframe::App for OcrApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("OCR Result");
+            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                // Use a mutable reference to the text for the TextEdit
+                ui.add_sized(
+                    ui.available_size(),
+                    egui::TextEdit::multiline(&mut self.text).font(egui::TextStyle::Monospace),
+                );
+            });
+        });
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Connect to the D-Bus session bus
+    // --- Phase 1: Capture and OCR (Async) ---
+    let ocr_text = capture_and_ocr().await?;
+
+    // --- Phase 2: Show Results in UI (Sync) ---
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 300.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "OCR Result",
+        options,
+        Box::new(|_cc| Ok(Box::new(OcrApp { text: ocr_text }))),
+    )?;
+
+    Ok(())
+}
+
+async fn capture_and_ocr() -> Result<String, Box<dyn std::error::Error>> {
+    // (The existing capture_and_ocr function remains unchanged)
     let connection = Connection::session().await?;
 
-    // 2. Generate a unique token for the request handle
     const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let mut rng = rand::rng();
     let token: String = (0..10)
@@ -31,12 +70,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Requesting screenshot via the portal...");
     println!("Please select a region in the UI that appears.");
 
-    // 3. Set up the options dictionary
     let mut options: HashMap<&str, Value> = HashMap::new();
     options.insert("handle_token", Str::from(token).into());
     options.insert("interactive", true.into());
 
-    // 4. Make the D-Bus method call to the Screenshot portal
     let proxy = zbus::Proxy::new(
         &connection,
         "org.freedesktop.portal.Desktop",
@@ -47,7 +84,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _ = proxy.call_method("Screenshot", &("", options)).await?;
 
-    // The actual response comes as a signal. We must listen for it.
     let request_proxy = zbus::Proxy::new(
         &connection,
         "org.freedesktop.portal.Desktop",
@@ -59,7 +95,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut signal_stream = request_proxy.receive_signal("Response").await?;
     let response_signal = signal_stream.next().await.unwrap();
 
-    // 5. Decode the signal response
     let body = response_signal.body();
     let (response_code, results): (u32, HashMap<String, Value>) = body.deserialize()?;
 
@@ -72,14 +107,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let uri_str = uri_binding.as_str();
     println!("Screenshot captured! URI: {}", uri_str);
 
-    // 6. Decode the URI and read the image data into memory
     let path_str = uri_str.strip_prefix("file://").unwrap();
     let decoded_path = urlencoding::decode(path_str)?.into_owned();
     let source_path = std::path::PathBuf::from(decoded_path);
 
     let image_data = fs::read(&source_path)?;
 
-    // 7. Clean up the temporary file created by the portal
     fs::remove_file(&source_path)?;
 
     println!(
@@ -87,13 +120,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         image_data.len()
     );
 
-    // 8. Perform OCR on the image data
     println!("\nPerforming OCR on the captured image...");
     let ocr_text = tesseract::Tesseract::new(None, Some("eng"))?
         .set_image_from_mem(&image_data)?
         .get_text()?;
 
-    println!("\n--- OCR Result ---\n{}", ocr_text);
-
-    Ok(())
+    Ok(ocr_text)
 }
