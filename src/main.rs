@@ -1,6 +1,5 @@
 use futures_util::stream::StreamExt;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use std::collections::HashMap;
 use std::fs;
 use zbus::zvariant::{ObjectPath, Str, Value};
@@ -12,11 +11,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let connection = Connection::session().await?;
 
     // 2. Generate a unique token for the request handle
-    let token: String = thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(10)
-        .map(char::from)
+    const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut rng = rand::rng();
+    let token: String = (0..10)
+        .map(|_| {
+            let idx = rng.random_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
         .collect();
+
     let sender = connection
         .unique_name()
         .unwrap()
@@ -83,6 +86,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Successfully loaded screenshot into memory ({} bytes).",
         image_data.len()
     );
+
+    // 8. Perform OCR on the image data
+    println!("\nPerforming OCR on the captured image...");
+    let ocr_text = tesseract::Tesseract::new(None, Some("eng"))?
+        .set_image_from_mem(&image_data)?
+        .get_text()?;
+
+    println!("\n--- OCR Result ---\n{}", ocr_text);
 
     Ok(())
 }
