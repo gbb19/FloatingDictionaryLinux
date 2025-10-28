@@ -6,14 +6,6 @@ use std::fs;
 use zbus::zvariant::{ObjectPath, Str, Value};
 use zbus::Connection;
 
-// Helper function to generate a unique filename
-fn generate_filename() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("screenshot-{}.png", now.as_secs())
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Connect to the D-Bus session bus
