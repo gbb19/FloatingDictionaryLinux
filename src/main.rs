@@ -45,12 +45,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Floating Dictionary",
         options,
         Box::new(|_cc| {
-            let clipboard = arboard::Clipboard::new().ok();
             Ok(Box::new(OcrApp {
                 text: ocr_text,
                 translation_data: None, // Will be updated to use Option<CombinedTranslationData>
                 has_gained_focus: false,
-                clipboard,
                 is_translating: true,
                 translation_rx: rx, // Receiver for the new data structure
                 translation_started: true,

@@ -8,7 +8,6 @@ pub struct OcrApp {
     pub text: String,
     pub translation_data: Option<CombinedTranslationData>,
     pub has_gained_focus: bool,
-    pub clipboard: Option<arboard::Clipboard>,
     pub is_translating: bool,
     pub translation_rx: Receiver<CombinedTranslationData>,
     pub translation_started: bool,
@@ -34,11 +33,6 @@ impl eframe::App for OcrApp {
         if let Ok(data) = self.translation_rx.try_recv() {
             self.translation_data = Some(data);
             self.is_translating = false;
-
-            // Copy original text to clipboard automatically
-            if let Some(clipboard) = self.clipboard.as_mut() {
-                let _ = clipboard.set_text(self.text.clone());
-            }
         }
 
         setup_styles(ctx);
