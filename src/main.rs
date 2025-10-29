@@ -18,7 +18,7 @@ struct OcrApp {
     clipboard: Option<arboard::Clipboard>,
     is_translating: bool,
     translation_rx: Receiver<String>,
-    translation_tx: Sender<String>,
+    translation_started: bool,
 }
 
 impl eframe::App for OcrApp {
@@ -27,6 +27,11 @@ impl eframe::App for OcrApp {
         if let Ok(translation) = self.translation_rx.try_recv() {
             self.translation = Some(translation);
             self.is_translating = false;
+
+            // Copy to clipboard อัตโนมัติ
+            if let Some(clipboard) = self.clipboard.as_mut() {
+                let _ = clipboard.set_text(self.text.clone());
+            }
         }
 
         // --- Minimal Style Setup ---
@@ -46,7 +51,27 @@ impl eframe::App for OcrApp {
 
         ctx.set_visuals(visuals);
 
-        // ตั้งค่าฟอนต์
+        // ตั้งค่าฟอนต์ Noto Sans Thai
+        let mut fonts = egui::FontDefinitions::default();
+
+        // โหลดฟอนต์ Noto Sans Thai
+        fonts.font_data.insert(
+            "noto_sans_thai".to_owned(),
+            egui::FontData::from_static(include_bytes!(
+                "/usr/share/fonts/google-noto-vf/NotoSansThai[wght].ttf"
+            )),
+        );
+
+        // ตั้งค่าให้ใช้ Noto Sans Thai เป็นฟอนต์หลัก
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "noto_sans_thai".to_owned());
+
+        ctx.set_fonts(fonts);
+
+        // ตั้งค่าขนาดฟอนต์
         let mut style = (*ctx.style()).clone();
         style.text_styles = [
             (
@@ -58,8 +83,8 @@ impl eframe::App for OcrApp {
                 egui::FontId::new(14.0, egui::FontFamily::Proportional),
             ),
             (
-                egui::TextStyle::Monospace,
-                egui::FontId::new(15.0, egui::FontFamily::Monospace),
+                egui::TextStyle::Small,
+                egui::FontId::new(12.0, egui::FontFamily::Proportional),
             ),
         ]
         .into();
@@ -90,9 +115,9 @@ impl eframe::App for OcrApp {
                 ui.vertical(|ui| {
                     // พื้นที่แสดงข้อความต้นฉบับ
                     let scroll_height = if self.translation.is_some() {
-                        (ui.available_height() - 55.0) / 2.0 - 20.0
+                        (ui.available_height()) / 2.0 - 30.0
                     } else {
-                        ui.available_height() - 55.0
+                        ui.available_height() - 10.0
                     };
 
                     ui.label(
@@ -103,7 +128,7 @@ impl eframe::App for OcrApp {
                     ui.add_space(4.0);
 
                     egui::ScrollArea::vertical()
-                        .id_source("original_text_scroll") // เพิ่ม ID
+                        .id_source("original_text_scroll")
                         .max_height(scroll_height)
                         .auto_shrink([false; 2])
                         .show(ui, |ui| {
@@ -132,7 +157,7 @@ impl eframe::App for OcrApp {
                         ui.add_space(4.0);
 
                         egui::ScrollArea::vertical()
-                            .id_source("translation_text_scroll") // เพิ่ม ID ที่แตกต่าง
+                            .id_source("translation_text_scroll")
                             .max_height(scroll_height)
                             .auto_shrink([false; 2])
                             .show(ui, |ui| {
@@ -146,45 +171,20 @@ impl eframe::App for OcrApp {
                                     .selectable(true),
                                 );
                             });
-                    }
+                    } else if self.is_translating {
+                        ui.add_space(12.0);
+                        ui.separator();
+                        ui.add_space(8.0);
 
-                    ui.add_space(8.0);
-                    ui.separator();
-                    ui.add_space(8.0);
-
-                    // ปุ่มต่างๆ
-                    ui.horizontal(|ui| {
-                        if ui
-                            .button(egui::RichText::new("📋 Copy").size(14.0))
-                            .clicked()
-                        {
-                            if let Some(clipboard) = self.clipboard.as_mut() {
-                                let _ = clipboard.set_text(self.text.clone());
-                            }
-                        }
-
-                        if !self.is_translating && self.translation.is_none() {
-                            if ui
-                                .button(egui::RichText::new("🌐 Translate").size(14.0))
-                                .clicked()
-                            {
-                                self.is_translating = true;
-                                let text = self.text.clone();
-                                let tx = self.translation_tx.clone();
-                                let ctx_clone = ctx.clone();
-
-                                std::thread::spawn(move || {
-                                    let rt = tokio::runtime::Runtime::new().unwrap();
-                                    let translation = rt.block_on(translate_text(&text));
-                                    let _ = tx.send(translation);
-                                    ctx_clone.request_repaint();
-                                });
-                            }
-                        } else if self.is_translating {
+                        ui.horizontal(|ui| {
                             ui.spinner();
-                            ui.label("Translating...");
-                        }
-                    });
+                            ui.label(
+                                egui::RichText::new("Translating...")
+                                    .size(14.0)
+                                    .color(egui::Color32::from_rgb(150, 200, 255)),
+                            );
+                        });
+                    }
 
                     ui.add_space(4.0);
                 });
@@ -459,6 +459,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // สร้าง channel สำหรับส่งคำแปล
     let (tx, rx) = channel();
 
+    // เริ่มแปลทันทีใน background thread
+    let text_clone = ocr_text.clone();
+    let tx_clone = tx.clone();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let translation = rt.block_on(translate_text(&text_clone));
+        let _ = tx_clone.send(translation);
+    });
+
     // --- Phase 2: Show Results in UI (Sync) ---
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -478,9 +487,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 translation: None,
                 has_gained_focus: false,
                 clipboard,
-                is_translating: false,
+                is_translating: true,
                 translation_rx: rx,
-                translation_tx: tx,
+                translation_started: true,
             }))
         }),
     )?;
