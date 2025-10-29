@@ -5,9 +5,16 @@ mod translation;
 use app::OcrApp;
 use clap::{Parser, ValueEnum};
 use eframe::egui;
+use include_dir::{include_dir, Dir};
 use regex::Regex;
+use std::env;
+use std::fs;
 use std::sync::mpsc::channel;
 use translation::{is_single_word, CombinedTranslationData};
+
+// Embed the 'tessdata' directory directly into the binary.
+// This requires a `tessdata` folder in the project's root directory.
+static TESS_DATA_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/tessdata");
 
 #[derive(Clone, Debug, ValueEnum, PartialEq)]
 enum OcrLang {
@@ -55,16 +62,43 @@ struct Args {
     target: String,
 }
 
+/// Sets up the Tesseract data directory.
+/// It extracts embedded `.traineddata` files to a user-specific data directory
+/// and sets the TESSDATA_PREFIX environment variable so Tesseract can find them.
+fn setup_tessdata() -> Result<(), Box<dyn std::error::Error>> {
+    // Find a suitable directory to store our data files (e.g., ~/.local/share on Linux).
+    let data_dir = dirs::data_dir().ok_or("Could not find a valid data directory.")?;
+    let app_data_dir = data_dir.join("floating-dictionary-linux");
+    let tessdata_path = app_data_dir.join("tessdata");
+
+    // If the directory doesn't exist, create it and extract the embedded files.
+    if !tessdata_path.exists() {
+        fs::create_dir_all(&tessdata_path)?;
+
+        for file in TESS_DATA_DIR.files() {
+            let file_path = tessdata_path.join(file.path());
+            fs::write(file_path, file.contents())?;
+        }
+    }
+
+    // Tell Tesseract where to find the 'tessdata' folder by setting the TESSDATA_PREFIX
+    // environment variable. It needs to point to the *parent* directory of 'tessdata'.
+    env::set_var("TESSDATA_PREFIX", &app_data_dir);
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // --- Phase 0: Setup ---
+    // Ensure Tesseract data files are available and the environment is configured.
+    setup_tessdata()?;
+
     let args = Args::parse();
 
     // --- OCR Language Selection Logic ---
     let ocr_lang_str = if args.ocr_lang == OcrLang::Auto {
         let all_langs = OcrLang::all_tesseract_langs();
-
-        // Map the Google Translate target language code (e.g., "th")
-        // to its corresponding Tesseract language code (e.g., "tha").
         let target_tess_lang = match args.target.as_str() {
             "th" => "tha",
             "en" => "eng",
@@ -72,19 +106,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "ko" => "kor",
             "ja" => "jpn",
             "zh-CN" => "chi_sim",
-            _ => "", // If target is not in our OCR list, don't filter anything.
+            _ => "",
         };
-
-        // Filter out the target language from the list of all OCR languages.
         let filtered_langs: Vec<&str> = all_langs
             .into_iter()
             .filter(|&lang| lang != target_tess_lang)
             .collect();
-
-        // Join the remaining languages with '+' for Tesseract.
         filtered_langs.join("+")
     } else {
-        // If a specific language is chosen, just use its Tesseract code.
         args.ocr_lang.to_tesseract_str().to_owned()
     };
 
@@ -92,7 +121,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ocr_text = ocr::capture_and_ocr(&ocr_lang_str).await?;
     if is_single_word(&ocr_text) {
         // For single words, trim any special characters from the start and end.
-        // This preserves characters like hyphens within a word (e.g., "state-of-the-art").
         let re = Regex::new(r"^[^a-zA-Z0-9\p{L}]+|[^a-zA-Z0-9\p{L}]+$").unwrap();
         ocr_text = re.replace_all(&ocr_text, "").to_string();
     }
@@ -118,7 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Phase 2: Show Results in UI (Sync) ---
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([500.0, 200.0]) // A sensible initial size before content is loaded
+            .with_inner_size([500.0, 200.0])
             .with_min_inner_size([400.0, 150.0])
             .with_max_inner_size([600.0, 800.0])
             .with_decorations(false)
@@ -133,8 +161,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Box::new(|cc| {
             // --- FONT & STYLE SETUP ---
             let mut fonts = egui::FontDefinitions::default();
-
-            // 1. Load all font data from assets
             fonts.font_data.insert(
                 "noto_sans".to_owned(),
                 egui::FontData::from_static(include_bytes!("../assets/fonts/NotoSans-Regular.ttf")),
@@ -163,8 +189,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "../assets/fonts/NotoSansSC-Regular.ttf"
                 )),
             );
-
-            // 2. Create a list of font names in fallback order
             let font_family_list = vec![
                 "noto_sans".to_owned(),
                 "noto_sans_thai".to_owned(),
@@ -172,19 +196,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "noto_sans_kr".to_owned(),
                 "noto_sans_sc".to_owned(),
             ];
-
-            // 3. Explicitly overwrite the font families to use our new font list.
             fonts
                 .families
                 .insert(egui::FontFamily::Proportional, font_family_list.clone());
             fonts
                 .families
                 .insert(egui::FontFamily::Monospace, font_family_list);
-
-            // 4. Apply the new font configuration
             cc.egui_ctx.set_fonts(fonts);
-
-            // 5. Configure text styles and spacing (moved from app.rs)
             let mut style = (*cc.egui_ctx.style()).clone();
             style.text_styles = [
                 (
@@ -207,8 +225,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into();
             style.spacing.item_spacing = egui::Vec2::new(6.0, 6.0);
             cc.egui_ctx.set_style(style);
-            // --- END FONT & STYLE SETUP ---
-
             Ok(Box::new(OcrApp {
                 text: ocr_text,
                 translation_data: None,
