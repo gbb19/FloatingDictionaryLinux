@@ -9,8 +9,9 @@ use regex::Regex;
 use std::sync::mpsc::channel;
 use translation::{is_single_word, CombinedTranslationData};
 
-#[derive(Clone, Debug, ValueEnum)]
+#[derive(Clone, Debug, ValueEnum, PartialEq)]
 enum OcrLang {
+    Auto,
     Eng,
     Rus,
     Kor,
@@ -25,6 +26,7 @@ impl OcrLang {
     /// Converts the enum variant to the string representation Tesseract expects.
     fn to_tesseract_str(&self) -> &str {
         match self {
+            OcrLang::Auto => "auto", // This isn't sent to Tesseract directly.
             OcrLang::Eng => "eng",
             OcrLang::Rus => "rus",
             OcrLang::Kor => "kor",
@@ -33,14 +35,19 @@ impl OcrLang {
             OcrLang::Thai => "tha", // Tesseract uses 'tha' for Thai
         }
     }
+
+    /// Returns a list of all Tesseract-compatible language strings.
+    fn all_tesseract_langs() -> Vec<&'static str> {
+        vec!["eng", "rus", "kor", "jpn", "chi_sim", "tha"]
+    }
 }
 
 /// A simple OCR and translation tool
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Language for OCR (Tesseract)
-    #[arg(long, value_enum, default_value = "eng")]
+    /// Language for OCR (Tesseract). 'auto' uses all available languages except the target language.
+    #[arg(long, value_enum, default_value = "auto")]
     ocr_lang: OcrLang,
 
     /// Target language for translation
@@ -52,8 +59,37 @@ struct Args {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    // --- OCR Language Selection Logic ---
+    let ocr_lang_str = if args.ocr_lang == OcrLang::Auto {
+        let all_langs = OcrLang::all_tesseract_langs();
+
+        // Map the Google Translate target language code (e.g., "th")
+        // to its corresponding Tesseract language code (e.g., "tha").
+        let target_tess_lang = match args.target.as_str() {
+            "th" => "tha",
+            "en" => "eng",
+            "ru" => "rus",
+            "ko" => "kor",
+            "ja" => "jpn",
+            "zh-CN" => "chi_sim",
+            _ => "", // If target is not in our OCR list, don't filter anything.
+        };
+
+        // Filter out the target language from the list of all OCR languages.
+        let filtered_langs: Vec<&str> = all_langs
+            .into_iter()
+            .filter(|&lang| lang != target_tess_lang)
+            .collect();
+
+        // Join the remaining languages with '+' for Tesseract.
+        filtered_langs.join("+")
+    } else {
+        // If a specific language is chosen, just use its Tesseract code.
+        args.ocr_lang.to_tesseract_str().to_owned()
+    };
+
     // --- Phase 1: Capture and OCR (Async) ---
-    let mut ocr_text = ocr::capture_and_ocr(args.ocr_lang.to_tesseract_str()).await?;
+    let mut ocr_text = ocr::capture_and_ocr(&ocr_lang_str).await?;
     if is_single_word(&ocr_text) {
         // For single words, remove any special characters that OCR might have picked up.
         // Keep Unicode letters to support non-latin scripts.
