@@ -1,7 +1,6 @@
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
-use tokio;
 
 // --- Data Structures ---
 
@@ -43,50 +42,43 @@ pub fn is_single_word(text: &str) -> bool {
 
 // --- Core Translation Logic ---
 
-pub async fn translate_text(text: &str) -> CombinedTranslationData {
+pub async fn translate_text(
+    text: &str,
+    source: &str, // Expects "auto" from main.rs
+    target: &str,
+) -> Result<CombinedTranslationData, Box<dyn std::error::Error + Send + Sync>> {
     let search_word = text.trim().to_string();
 
-    if is_single_word(&search_word) {
-        // For single words, fetch from both Google and Longdo concurrently.
-        let (google_res, longdo_res) = tokio::join!(
-            google_translate(&search_word, "th", "en"),
-            fetch_longdo_translation(&search_word)
-        );
+    // Step 1: Translate with Google to get both the translation and the detected source language.
+    let (google_translation, detected_source_lang) =
+        google_translate_with_source_detection(&search_word, target, source).await?;
 
-        let google_translation =
-            google_res.unwrap_or_else(|e| format!("Google Translate Error: {}", e));
-        let longdo_data = longdo_res.ok();
+    let mut longdo_data: Option<LongdoData> = None;
 
-        CombinedTranslationData {
-            search_word,
-            source_lang: "EN".to_string(),
-            target_lang: "TH".to_string(),
-            google_translation,
-            longdo_data,
-        }
-    } else {
-        // For sentences, only use Google Translate.
-        let google_translation = google_translate(&search_word, "th", "en")
-            .await
-            .unwrap_or_else(|e| format!("Google Translate Error: {}", e));
-
-        CombinedTranslationData {
-            search_word,
-            source_lang: "EN".to_string(),
-            target_lang: "TH".to_string(),
-            google_translation,
-            longdo_data: None,
-        }
+    // Step 2: If the detected language is English, target is Thai, and it's a single word, fetch Longdo data.
+    if is_single_word(&search_word) && detected_source_lang == "en" && target == "th" {
+        // Since the conditions are met, we can now fetch from Longdo.
+        // We call this sequentially because the decision to call it depends on the result from Google.
+        longdo_data = fetch_longdo_translation(&search_word).await.ok();
     }
+
+    // Step 3: Combine all data and return.
+    Ok(CombinedTranslationData {
+        search_word,
+        source_lang: detected_source_lang.to_uppercase(), // Use the language Google detected
+        target_lang: target.to_uppercase(),
+        google_translation,
+        longdo_data,
+    })
 }
 
 // --- Service-Specific Fetchers ---
 
-async fn google_translate(
+async fn google_translate_with_source_detection(
     text: &str,
     target_lang: &str,
     source_lang: &str,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
     let url = format!(
         "https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}",
         source_lang,
@@ -98,17 +90,27 @@ async fn google_translate(
     let response = client.get(&url).send().await?;
     let json: serde_json::Value = response.json().await?;
 
-    if let Some(translations) = json.get(0).and_then(|v| v.as_array()) {
+    // Extract the translated text segments.
+    let translation = if let Some(translations) = json.get(0).and_then(|v| v.as_array()) {
         let mut result = String::new();
         for item in translations {
             if let Some(text_part) = item.get(0).and_then(|v| v.as_str()) {
                 result.push_str(text_part);
             }
         }
-        Ok(result)
+        result
     } else {
-        Err("Failed to parse Google Translate JSON response".into())
-    }
+        return Err("Failed to parse Google Translate translation".into());
+    };
+
+    // Extract the detected source language.
+    let detected_lang = json
+        .get(2)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or("Failed to parse detected source language from Google")?;
+
+    Ok((translation, detected_lang))
 }
 
 async fn fetch_longdo_translation(

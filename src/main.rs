@@ -3,15 +3,57 @@ mod ocr;
 mod translation;
 
 use app::OcrApp;
+use clap::{Parser, ValueEnum};
 use eframe::egui;
 use regex::Regex;
 use std::sync::mpsc::channel;
 use translation::{is_single_word, CombinedTranslationData};
 
+#[derive(Clone, Debug, ValueEnum)]
+enum OcrLang {
+    Eng,
+    Rus,
+    Kor,
+    Jpn,
+    #[value(name = "chi_sim")]
+    ChiSim,
+    #[value(name = "thai")]
+    Thai,
+}
+
+impl OcrLang {
+    /// Converts the enum variant to the string representation Tesseract expects.
+    fn to_tesseract_str(&self) -> &str {
+        match self {
+            OcrLang::Eng => "eng",
+            OcrLang::Rus => "rus",
+            OcrLang::Kor => "kor",
+            OcrLang::Jpn => "jpn",
+            OcrLang::ChiSim => "chi_sim",
+            OcrLang::Thai => "tha", // Tesseract uses 'tha' for Thai
+        }
+    }
+}
+
+/// A simple OCR and translation tool
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Language for OCR (Tesseract)
+    #[arg(long, value_enum, default_value = "eng")]
+    ocr_lang: OcrLang,
+
+    /// Target language for translation
+    #[arg(short, long, default_value = "th")]
+    target: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
+
     // --- Phase 1: Capture and OCR (Async) ---
-    let mut ocr_text = ocr::capture_and_ocr().await?;
+    let mut ocr_text = ocr::capture_and_ocr(args.ocr_lang.to_tesseract_str()).await?;
     if is_single_word(&ocr_text) {
         // For single words, remove any special characters that OCR might have picked up.
         let re = Regex::new(r"[^a-zA-Z0-9]").unwrap();
@@ -23,9 +65,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start translating immediately in a background thread
     let text_clone = ocr_text.clone();
+    let target_lang = args.target;
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let translation_data = rt.block_on(translation::translate_text(&text_clone));
+        let translation_data = rt
+            .block_on(translation::translate_text(
+                &text_clone,
+                "auto", // Always use auto-detection for the Google Translate source language
+                &target_lang,
+            ))
+            .unwrap(); // Using unwrap here for simplicity, consider proper error handling
         let _ = tx.send(translation_data);
     });
 

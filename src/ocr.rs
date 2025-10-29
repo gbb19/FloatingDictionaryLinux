@@ -5,7 +5,7 @@ use std::fs;
 use zbus::zvariant::{ObjectPath, Str, Value};
 use zbus::Connection;
 
-pub async fn capture_and_ocr() -> Result<String, Box<dyn std::error::Error>> {
+pub async fn capture_and_ocr(lang: &str) -> Result<String, Box<dyn std::error::Error>> {
     let connection = Connection::session().await?;
     const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let mut rng = rand::rng();
@@ -62,7 +62,7 @@ pub async fn capture_and_ocr() -> Result<String, Box<dyn std::error::Error>> {
     let image_data = fs::read(&source_path)?;
     fs::remove_file(&source_path)?;
 
-    let ocr_text = tesseract::Tesseract::new(None, Some("eng"))?
+    let ocr_text = tesseract::Tesseract::new(None, Some(lang))?
         .set_image_from_mem(&image_data)?
         .get_text()?;
 
