@@ -36,7 +36,7 @@ pub struct CombinedTranslationData {
 
 // --- Helper Functions ---
 
-fn is_single_word(text: &str) -> bool {
+pub fn is_single_word(text: &str) -> bool {
     let trimmed = text.trim();
     !trimmed.contains(char::is_whitespace) && trimmed.len() < 50
 }

@@ -53,7 +53,7 @@ impl eframe::App for OcrApp {
         }
 
         // --- Central Panel ---
-        egui::CentralPanel::default()
+        let panel_response = egui::CentralPanel::default()
             .frame(egui::Frame {
                 fill: egui::Color32::from_rgba_premultiplied(28, 28, 32, 250),
                 inner_margin: egui::Margin::same(16.0),
@@ -73,9 +73,10 @@ impl eframe::App for OcrApp {
                                 .color(egui::Color32::from_gray(200)),
                         );
                     });
+                    0.0 // Return 0.0 for height when loading
                 } else if let Some(data) = &self.translation_data {
                     // --- Results View ---
-                    egui::ScrollArea::vertical().show(ui, |ui| {
+                    let scroll_response = egui::ScrollArea::vertical().show(ui, |ui| {
                         // 1. Search Term (Header)
                         ui.label(
                             egui::RichText::new(&data.search_word)
@@ -116,9 +117,38 @@ impl eframe::App for OcrApp {
                                 }
                             }
                         }
+                        ui.min_rect().height() // Return the full content height
                     });
+                    scroll_response.inner
+                } else {
+                    0.0 // Should not happen, but return 0.0 as a fallback
                 }
             });
+
+        // --- Auto-resize window after translation is done ---
+        let has_resized_id = egui::Id::new("has_resized");
+        let already_resized = ctx
+            .memory(|m| m.data.get_temp::<bool>(has_resized_id))
+            .unwrap_or(false);
+
+        if !self.is_translating && !already_resized {
+            let content_height = panel_response.inner;
+            // The frame has a 16.0 margin on top and bottom
+            let mut desired_height = content_height + 16.0 * 2.0;
+            let current_width = ctx.screen_rect().width();
+
+            // Enforce the maximum height (should match the value in main.rs)
+            let max_height = 600.0;
+            desired_height = desired_height.min(max_height);
+
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                current_width,
+                desired_height,
+            )));
+
+            // Mark as resized to avoid doing it every frame
+            ctx.memory_mut(|m| m.data.insert_temp(has_resized_id, true));
+        }
 
         // Request repaint if still translating
         if self.is_translating {
