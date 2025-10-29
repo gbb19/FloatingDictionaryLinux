@@ -2,9 +2,6 @@
 
 A fast, simple, and modern screen-capture OCR and translation tool for Linux desktops.
 
-![Screenshot Placeholder](https://user-images.githubusercontent.com/12345/67890.png)
-*(A screenshot or GIF demonstrating the app in action would go here.)*
-
 ## Features
 
 - **Instant OCR Capture**: Select any region on your screen to instantly recognize the text within it.
