@@ -2,6 +2,10 @@
 
 A fast, simple, and modern screen-capture OCR and translation tool for Linux desktops.
 
+This application intelligently adapts to your desktop environment, using KDE Spectacle for screen captures on Plasma and the Freedesktop portal for GNOME and other environments.
+
+*(A screenshot or GIF demonstrating the app in action would go here.)*
+
 ## Features
 
 - **Instant OCR Capture**: Select any region on your screen to instantly recognize the text within it.
@@ -20,25 +24,28 @@ A fast, simple, and modern screen-capture OCR and translation tool for Linux des
 
 ## Prerequisites
 
-Before using the application, you must have the following installed on your system:
+Before using the application, you must have the following screenshot tools and backend libraries installed on your system.
 
 1.  **Tesseract OCR Engine**: This is the core library used for text recognition.
-2.  **Freedesktop Portals**: The application uses the `xdg-desktop-portal` infrastructure for screen capturing. This is standard on most modern Linux desktops (GNOME, KDE Plasma, etc.).
 
-**Installation Instructions for Tesseract:**
+2.  **Screenshot Utility**: The application automatically detects your desktop environment and uses the appropriate tool:
+    *   **For KDE Plasma**: `spectacle` is required. It is usually pre-installed with the desktop environment.
+    *   **For GNOME and others**: The `xdg-desktop-portal` infrastructure is used. This is standard on most modern non-KDE Linux desktops.
+
+**Installation Instructions for Core Dependencies:**
 
 -   **Fedora / Red Hat:**
     ```sh
-    sudo dnf install tesseract
+    sudo dnf install tesseract spectacle
     ```
 -   **Debian / Ubuntu:**
     ```sh
     sudo apt-get update
-    sudo apt-get install tesseract-ocr
+    sudo apt-get install tesseract-ocr spectacle
     ```
 -   **Arch Linux:**
     ```sh
-    sudo pacman -S tesseract
+    sudo pacman -S tesseract spectacle
     ```
 
 ## Installation
@@ -117,3 +124,7 @@ If you prefer to build the application yourself, follow these steps:
     ```
 
 The final binary will be located at `target/release/floating-dictionary-linux`.
+
+## License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
