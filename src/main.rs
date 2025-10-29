@@ -10,9 +10,7 @@ use translation::CombinedTranslationData;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Phase 1: Capture and OCR (Async) ---
-    // Use a fixed string for UI development instead of actual OCR
-    // let ocr_text = ocr::capture_and_ocr().await?;
-    let ocr_text = "hello".to_string();
+    let ocr_text = ocr::capture_and_ocr().await?;
 
     // Create a channel for sending the complex translation data
     let (tx, rx) = channel::<CombinedTranslationData>();
