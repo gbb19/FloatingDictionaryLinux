@@ -91,9 +91,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Phase 1: Capture and OCR (Async) ---
     let mut ocr_text = ocr::capture_and_ocr(&ocr_lang_str).await?;
     if is_single_word(&ocr_text) {
-        // For single words, remove any special characters that OCR might have picked up.
-        // Keep Unicode letters to support non-latin scripts.
-        let re = Regex::new(r"[^a-zA-Z0-9\p{L}]").unwrap();
+        // For single words, trim any special characters from the start and end.
+        // This preserves characters like hyphens within a word (e.g., "state-of-the-art").
+        let re = Regex::new(r"^[^a-zA-Z0-9\p{L}]+|[^a-zA-Z0-9\p{L}]+$").unwrap();
         ocr_text = re.replace_all(&ocr_text, "").to_string();
     }
 
