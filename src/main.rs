@@ -81,9 +81,10 @@ fn setup_tessdata() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Tell Tesseract where to find the 'tessdata' folder by setting the TESSDATA_PREFIX
-    // environment variable. It needs to point to the *parent* directory of 'tessdata'.
-    env::set_var("TESSDATA_PREFIX", &app_data_dir);
+    // Tell Tesseract where to find the data files.
+    // The TESSDATA_PREFIX variable should point to the directory
+    // containing the `.traineddata` files directly.
+    env::set_var("TESSDATA_PREFIX", &tessdata_path);
 
     Ok(())
 }
