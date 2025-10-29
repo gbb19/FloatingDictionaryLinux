@@ -56,7 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ocr_text = ocr::capture_and_ocr(args.ocr_lang.to_tesseract_str()).await?;
     if is_single_word(&ocr_text) {
         // For single words, remove any special characters that OCR might have picked up.
-        let re = Regex::new(r"[^a-zA-Z0-9]").unwrap();
+        // Keep Unicode letters to support non-latin scripts.
+        let re = Regex::new(r"[^a-zA-Z0-9\p{L}]").unwrap();
         ocr_text = re.replace_all(&ocr_text, "").to_string();
     }
 
@@ -93,13 +94,91 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eframe::run_native(
         "Floating Dictionary",
         options,
-        Box::new(|_cc| {
+        Box::new(|cc| {
+            // --- FONT & STYLE SETUP ---
+            let mut fonts = egui::FontDefinitions::default();
+
+            // 1. Load all font data from assets
+            fonts.font_data.insert(
+                "noto_sans".to_owned(),
+                egui::FontData::from_static(include_bytes!("../assets/fonts/NotoSans-Regular.ttf")),
+            );
+            fonts.font_data.insert(
+                "noto_sans_thai".to_owned(),
+                egui::FontData::from_static(include_bytes!(
+                    "../assets/fonts/NotoSansThai-Regular.ttf"
+                )),
+            );
+            fonts.font_data.insert(
+                "noto_sans_jp".to_owned(),
+                egui::FontData::from_static(include_bytes!(
+                    "../assets/fonts/NotoSansJP-Regular.ttf"
+                )),
+            );
+            fonts.font_data.insert(
+                "noto_sans_kr".to_owned(),
+                egui::FontData::from_static(include_bytes!(
+                    "../assets/fonts/NotoSansKR-Regular.ttf"
+                )),
+            );
+            fonts.font_data.insert(
+                "noto_sans_sc".to_owned(),
+                egui::FontData::from_static(include_bytes!(
+                    "../assets/fonts/NotoSansSC-Regular.ttf"
+                )),
+            );
+
+            // 2. Create a list of font names in fallback order
+            let font_family_list = vec![
+                "noto_sans".to_owned(),
+                "noto_sans_thai".to_owned(),
+                "noto_sans_jp".to_owned(),
+                "noto_sans_kr".to_owned(),
+                "noto_sans_sc".to_owned(),
+            ];
+
+            // 3. Explicitly overwrite the font families to use our new font list.
+            fonts
+                .families
+                .insert(egui::FontFamily::Proportional, font_family_list.clone());
+            fonts
+                .families
+                .insert(egui::FontFamily::Monospace, font_family_list);
+
+            // 4. Apply the new font configuration
+            cc.egui_ctx.set_fonts(fonts);
+
+            // 5. Configure text styles and spacing (moved from app.rs)
+            let mut style = (*cc.egui_ctx.style()).clone();
+            style.text_styles = [
+                (
+                    egui::TextStyle::Body,
+                    egui::FontId::new(16.0, egui::FontFamily::Proportional),
+                ),
+                (
+                    egui::TextStyle::Button,
+                    egui::FontId::new(14.0, egui::FontFamily::Proportional),
+                ),
+                (
+                    egui::TextStyle::Small,
+                    egui::FontId::new(12.0, egui::FontFamily::Proportional),
+                ),
+                (
+                    egui::TextStyle::Heading,
+                    egui::FontId::new(24.0, egui::FontFamily::Proportional),
+                ),
+            ]
+            .into();
+            style.spacing.item_spacing = egui::Vec2::new(6.0, 6.0);
+            cc.egui_ctx.set_style(style);
+            // --- END FONT & STYLE SETUP ---
+
             Ok(Box::new(OcrApp {
                 text: ocr_text,
-                translation_data: None, // Will be updated to use Option<CombinedTranslationData>
+                translation_data: None,
                 has_gained_focus: false,
                 is_translating: true,
-                translation_rx: rx, // Receiver for the new data structure
+                translation_rx: rx,
                 translation_started: true,
             }))
         }),

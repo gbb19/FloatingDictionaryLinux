@@ -20,7 +20,6 @@ impl fmt::Debug for OcrApp {
             .field("text", &self.text)
             .field("translation_data", &self.translation_data)
             .field("has_gained_focus", &self.has_gained_focus)
-            .field("clipboard", &"Clipboard { .. }") // skip actual clipboard content
             .field("is_translating", &self.is_translating)
             .field("translation_started", &self.translation_started)
             .finish()
@@ -35,7 +34,8 @@ impl eframe::App for OcrApp {
             self.is_translating = false;
         }
 
-        setup_styles(ctx);
+        // Apply visual styles. Font and text styles are now set globally in main.rs
+        setup_visuals(ctx);
 
         // --- Close on focus loss ---
         let is_focused = ctx.input(|i| i.focused);
@@ -153,7 +153,7 @@ impl eframe::App for OcrApp {
 
 // --- UI Helper Functions ---
 
-fn setup_styles(ctx: &egui::Context) {
+fn setup_visuals(ctx: &egui::Context) {
     let mut visuals = egui::Visuals::dark();
     visuals.window_rounding = egui::Rounding::from(12.0);
     visuals.window_shadow = egui::epaint::Shadow {
@@ -169,43 +169,6 @@ fn setup_styles(ctx: &egui::Context) {
     visuals.widgets.active.bg_fill = egui::Color32::from_rgb(70, 110, 170);
 
     ctx.set_visuals(visuals);
-
-    let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert(
-        "noto_sans_thai".to_owned(),
-        egui::FontData::from_static(include_bytes!(
-            "/usr/share/fonts/google-noto-vf/NotoSansThai[wght].ttf"
-        )),
-    );
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .insert(0, "noto_sans_thai".to_owned());
-    ctx.set_fonts(fonts);
-
-    let mut style = (*ctx.style()).clone();
-    style.text_styles = [
-        (
-            egui::TextStyle::Body,
-            egui::FontId::new(16.0, egui::FontFamily::Proportional),
-        ),
-        (
-            egui::TextStyle::Button,
-            egui::FontId::new(14.0, egui::FontFamily::Proportional),
-        ),
-        (
-            egui::TextStyle::Small,
-            egui::FontId::new(12.0, egui::FontFamily::Proportional),
-        ),
-        (
-            egui::TextStyle::Heading,
-            egui::FontId::new(20.0, egui::FontFamily::Proportional),
-        ),
-    ]
-    .into();
-    style.spacing.item_spacing = egui::Vec2::new(6.0, 6.0);
-    ctx.set_style(style);
 }
 
 fn render_section_header(ui: &mut egui::Ui, title: &str) {
