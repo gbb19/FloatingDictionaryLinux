@@ -99,7 +99,7 @@ If you prefer to build the application yourself, follow these steps:
 
 1.  **Clone the repository**:
     ```sh
-    git clone https://github.com/your-username/your-repo.git
+    git clone https://github.com/gbb19/FloatingDictionaryLinux.git
     cd your-repo
     ```
 
