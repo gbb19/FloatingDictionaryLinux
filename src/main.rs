@@ -149,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([500.0, 200.0])
             .with_min_inner_size([400.0, 150.0])
-            .with_max_inner_size([600.0, 800.0])
+            .with_max_inner_size([800.0, 800.0])
             .with_decorations(false)
             .with_transparent(true)
             .with_resizable(true),
@@ -226,14 +226,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into();
             style.spacing.item_spacing = egui::Vec2::new(6.0, 6.0);
             cc.egui_ctx.set_style(style);
-            Ok(Box::new(OcrApp {
-                text: ocr_text,
-                translation_data: None,
-                has_gained_focus: false,
-                is_translating: true,
-                translation_rx: rx,
-                translation_started: true,
-            }))
+
+            // Use the new constructor for OcrApp
+            Ok(Box::new(OcrApp::new(ocr_text, rx)))
         }),
     )?;
 

@@ -7,27 +7,45 @@ use std::sync::mpsc::Receiver;
 pub struct OcrApp {
     pub text: String,
     pub translation_data: Option<CombinedTranslationData>,
-    pub has_gained_focus: bool,
     pub is_translating: bool,
     pub translation_rx: Receiver<CombinedTranslationData>,
     pub translation_started: bool,
+    // A frame counter to implement a more robust focus-loss check.
+    frame_count: u32,
 }
 
-// Implement Debug manually (skip clipboard field)
+impl OcrApp {
+    // Constructor to initialize the app state
+    pub fn new(text: String, translation_rx: Receiver<CombinedTranslationData>) -> Self {
+        Self {
+            text,
+            translation_data: None,
+            is_translating: true,
+            translation_rx,
+            translation_started: true,
+            frame_count: 0,
+        }
+    }
+}
+
+// Implement Debug manually to avoid issues with non-Debug fields in the future
 impl fmt::Debug for OcrApp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OcrApp")
             .field("text", &self.text)
             .field("translation_data", &self.translation_data)
-            .field("has_gained_focus", &self.has_gained_focus)
             .field("is_translating", &self.is_translating)
             .field("translation_started", &self.translation_started)
+            .field("frame_count", &self.frame_count)
             .finish()
     }
 }
 
 impl eframe::App for OcrApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Increment the frame counter.
+        self.frame_count += 1;
+
         // Check if translation is complete
         if let Ok(data) = self.translation_rx.try_recv() {
             self.translation_data = Some(data);
@@ -37,13 +55,15 @@ impl eframe::App for OcrApp {
         // Apply visual styles. Font and text styles are now set globally in main.rs
         setup_visuals(ctx);
 
-        // --- Close on focus loss ---
-        let is_focused = ctx.input(|i| i.focused);
-        if !self.has_gained_focus && is_focused {
-            self.has_gained_focus = true;
-        }
-        if self.has_gained_focus && !is_focused {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        // --- Close on focus loss (Robust method) ---
+        // We wait for a couple of frames before checking for focus loss.
+        // This prevents the window from closing immediately upon creation in release builds
+        // before it has a chance to properly gain focus.
+        if self.frame_count > 2 {
+            let is_focused = ctx.input(|i| i.focused);
+            if !is_focused {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         }
 
         // --- Central Panel ---
@@ -71,9 +91,9 @@ impl eframe::App for OcrApp {
                 } else if let Some(data) = &self.translation_data {
                     // --- Results View ---
                     let scroll_response = egui::ScrollArea::vertical().show(ui, |ui| {
-                        // 1. Search Term (Header)
+                        // 1. Search Term (Original OCR'd Text)
                         ui.label(
-                            egui::RichText::new(&data.search_word)
+                            egui::RichText::new(&self.text)
                                 .size(24.0)
                                 .strong()
                                 .color(egui::Color32::WHITE),
@@ -132,7 +152,7 @@ impl eframe::App for OcrApp {
             let current_width = ctx.screen_rect().width();
 
             // Enforce the maximum height (should match the value in main.rs)
-            let max_height = 600.0;
+            let max_height = 800.0;
             desired_height = desired_height.min(max_height);
 
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
