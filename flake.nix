@@ -16,6 +16,8 @@
             pkgs.cargo
             pkgs.pkg-config
             pkgs.leptonica
+            pkgs.clang
+            pkgs.llvmPackages.libclang
             pkgs.openssl
             pkgs.gcc
           ];
