@@ -18,8 +18,18 @@
             pkgs.openssl
             pkgs.gcc
             pkgs.leptonica
+            pkgs.tesseract
             pkgs.clang
             pkgs.llvmPackages.libclang
+
+            # สำหรับ Wayland
+            pkgs.wayland
+            pkgs.wayland-protocols
+            pkgs.libx11
+            pkgs.libxrandr
+            pkgs.libxi
+            pkgs.libxinerama
+            pkgs.libxfixes
           ];
 
           # ช่วยให้ bindgen หา libclang เจอแน่นอน
