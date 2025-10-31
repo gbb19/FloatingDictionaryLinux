@@ -4,7 +4,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs =
-    { nixpkgs }:
+    { self, nixpkgs }:
     {
       devShells.x86_64-linux.default =
         let
