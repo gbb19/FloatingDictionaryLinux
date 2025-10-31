@@ -4,7 +4,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs =
-    { self, nixpkgs }:
+    { nixpkgs }:
     {
       devShells.x86_64-linux.default =
         let
@@ -15,6 +15,7 @@
             pkgs.rustc
             pkgs.cargo
             pkgs.pkg-config
+            pkgs.leptonica
             pkgs.openssl
             pkgs.gcc
           ];
