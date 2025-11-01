@@ -1,45 +1,68 @@
 {
-  description = "Rust dev environment with OpenSSL and Leptonica";
+  description = "Floating Dictionary Linux";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
 
   outputs =
-    { self, nixpkgs }:
     {
-      devShells.x86_64-linux.default =
-        let
-          pkgs = import nixpkgs { system = "x86_64-linux"; };
-        in
-        pkgs.mkShell {
-          buildInputs = [
-            pkgs.rustc
-            pkgs.cargo
-            pkgs.pkg-config
-            pkgs.openssl
-            pkgs.gcc
-            pkgs.leptonica
-            pkgs.tesseract
-            pkgs.clang
-            pkgs.llvmPackages.libclang
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            # Rust toolchain
+            rustc
+            cargo
+            rustfmt
+            clippy
 
-            # สำหรับ Wayland
-            pkgs.wayland
-            pkgs.wayland-protocols
-            pkgs.libx11
-            pkgs.libxrandr
-            pkgs.libxi
-            pkgs.libxinerama
-            pkgs.libxfixes
+            # Build tools (สำคัญ!)
+            pkg-config
+            clang
+            libclang.lib
+
+            # Wayland libraries
+            wayland
+            libxkbcommon
+
+            # Tesseract OCR
+            tesseract
+            leptonica
+
+            # X11 fallback (optional)
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXrandr
+            xorg.libXi
           ];
 
-          # ช่วยให้ bindgen หา libclang เจอแน่นอน
-          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+          # Critical: Set library paths
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+            pkgs.wayland
+            pkgs.libxkbcommon
+            pkgs.vulkan-loader
+            pkgs.libGL
+          ];
 
-          # บางโปรเจกต์ต้องการ headers ด้วย
-          BINDGEN_EXTRA_CLANG_ARGS = ''
-            -I${pkgs.llvmPackages.libclang.dev}/include
-            -I${pkgs.libclang.dev}/include
-          '';
+          # Environment variables
+          RUST_BACKTRACE = "1";
+
+          # สำคัญ: บอก bindgen ว่า libclang อยู่ที่ไหน
+          LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+
+          # สำหรับ clang headers
+          BINDGEN_EXTRA_CLANG_ARGS = "-I${pkgs.libclang.lib}/lib/clang/${pkgs.libclang.version}/include";
         };
-    };
+      }
+    );
 }
