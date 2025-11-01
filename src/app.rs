@@ -3,6 +3,9 @@ use eframe::egui;
 use std::fmt;
 use std::sync::mpsc::Receiver;
 
+const MAX_HEIGHT: f32 = 720.0;
+const MIN_HEIGHT: f32 = 160.0;
+
 // App struct for the egui UI
 pub struct OcrApp {
     pub text: String,
@@ -82,15 +85,20 @@ impl eframe::App for OcrApp {
                     });
                     None
                 } else if let Some(data) = &self.translation_data {
-                    // Results View - use a layout to measure size
-                    let layout_response = ui.vertical(|ui| {
-                        // Set a max width to ensure proper wrapping
-                        ui.set_max_width(500.0 - 32.0); // window width - margins
+                    // Results View with ScrollArea
+                    let scroll_response = egui::ScrollArea::vertical()
+                        .max_height(MAX_HEIGHT - 32.0) // 800 - 32 margins
+                        .show(ui, |ui| {
+                            // Set a max width to ensure proper wrapping
+                            ui.set_max_width(ui.available_width()); // window width - margins
 
-                        render_content(ui, &self.text, data);
-                    });
+                            render_content(ui, &self.text, data);
 
-                    Some(layout_response.response.rect.height())
+                            // Return the content height for resize calculation
+                            ui.min_rect().height()
+                        });
+
+                    Some(scroll_response.inner)
                 } else {
                     None
                 }
@@ -108,8 +116,8 @@ impl eframe::App for OcrApp {
                     let total_height = content_height + 32.0;
 
                     // Clamp between min and max
-                    let min_height = 150.0;
-                    let max_height = 800.0;
+                    let min_height = MIN_HEIGHT;
+                    let max_height = MAX_HEIGHT;
                     let desired_height = total_height.clamp(min_height, max_height);
 
                     // Get current width
@@ -180,6 +188,9 @@ fn render_content(ui: &mut egui::Ui, text: &str, data: &CombinedTranslationData)
             }
         }
     }
+
+    // Add bottom padding to prevent text from being cut off
+    ui.add_space(8.0);
 }
 
 // --- UI Helper Functions ---
@@ -190,7 +201,7 @@ fn setup_visuals(ctx: &egui::Context) {
     visuals.panel_fill = egui::Color32::from_rgb(28, 28, 32);
     visuals.window_fill = egui::Color32::from_rgb(28, 28, 32);
     visuals.extreme_bg_color = egui::Color32::from_rgb(28, 28, 32);
-    visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(50, 80, 120);
+    // visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(50, 80, 120);
     visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(60, 100, 150);
     visuals.widgets.active.bg_fill = egui::Color32::from_rgb(70, 110, 170);
     ctx.set_visuals(visuals);
