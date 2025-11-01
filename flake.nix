@@ -1,11 +1,9 @@
 {
   description = "Floating Dictionary Linux";
-
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
-
   outputs =
     {
       self,
@@ -18,49 +16,66 @@
         pkgs = nixpkgs.legacyPackages.${system};
       in
       {
+        # Development shell (เดิม)
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            # Rust toolchain
             rustc
             cargo
             rustfmt
             clippy
-
-            # Build tools (สำคัญ!)
             pkg-config
             clang
             libclang.lib
-
-            # Wayland libraries
             wayland
             libxkbcommon
-
-            # Tesseract OCR
             tesseract
             leptonica
-
-            # X11 fallback (optional)
             xorg.libX11
             xorg.libXcursor
             xorg.libXrandr
             xorg.libXi
           ];
-
-          # Critical: Set library paths
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
             pkgs.wayland
             pkgs.libxkbcommon
             pkgs.vulkan-loader
             pkgs.libGL
           ];
-
-          # Environment variables
           RUST_BACKTRACE = "1";
-
-          # สำคัญ: บอก bindgen ว่า libclang อยู่ที่ไหน
           LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+          BINDGEN_EXTRA_CLANG_ARGS = "-I${pkgs.libclang.lib}/lib/clang/${pkgs.libclang.version}/include";
+        };
 
-          # สำหรับ clang headers
+        # ✨ เพิ่มส่วนนี้ - Package build
+        packages.default = pkgs.rustPlatform.buildRustPackage {
+          pname = "floating-dictionary-linux";
+          version = "0.2.0";
+
+          src = ./.;
+
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+          };
+
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            clang
+          ];
+
+          buildInputs = with pkgs; [
+            wayland
+            libxkbcommon
+            tesseract
+            leptonica
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXrandr
+            xorg.libXi
+            vulkan-loader
+            libGL
+          ];
+
+          LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
           BINDGEN_EXTRA_CLANG_ARGS = "-I${pkgs.libclang.lib}/lib/clang/${pkgs.libclang.version}/include";
         };
       }
