@@ -19,11 +19,15 @@
         # Development shell
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
+            # rust
             rustc
             cargo
             rustfmt
             clippy
+            rustPlatform.rustcSrc
+
             pkg-config
+            openssl
             clang
             libclang.lib
             wayland
@@ -44,6 +48,15 @@
           RUST_BACKTRACE = "1";
           LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
           BINDGEN_EXTRA_CLANG_ARGS = "-I${pkgs.libclang.lib}/lib/clang/${pkgs.libclang.version}/include";
+
+          RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
+
+          shellHook = ''
+            export PATH="$CARGO_HOME/bin:$PATH"
+            export CARGO_HOME="$PWD/.cargo"
+            mkdir -p .cargo
+            echo '*' > .cargo/.gitignore
+          '';
         };
 
         # Package build
