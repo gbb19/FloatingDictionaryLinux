@@ -10,12 +10,10 @@ pub struct OcrApp {
     pub is_translating: bool,
     pub translation_rx: Receiver<CombinedTranslationData>,
     pub translation_started: bool,
-    // A frame counter to implement a more robust focus-loss check.
     frame_count: u32,
 }
 
 impl OcrApp {
-    // Constructor to initialize the app state
     pub fn new(text: String, translation_rx: Receiver<CombinedTranslationData>) -> Self {
         Self {
             text,
@@ -28,7 +26,6 @@ impl OcrApp {
     }
 }
 
-// Implement Debug manually to avoid issues with non-Debug fields in the future
 impl fmt::Debug for OcrApp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OcrApp")
@@ -43,7 +40,6 @@ impl fmt::Debug for OcrApp {
 
 impl eframe::App for OcrApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Increment the frame counter.
         self.frame_count += 1;
 
         // Check if translation is complete
@@ -52,13 +48,9 @@ impl eframe::App for OcrApp {
             self.is_translating = false;
         }
 
-        // Apply visual styles. Font and text styles are now set globally in main.rs
         setup_visuals(ctx);
 
-        // --- Close on focus loss (Robust method) ---
-        // We wait for a couple of frames before checking for focus loss.
-        // This prevents the window from closing immediately upon creation in release builds
-        // before it has a chance to properly gain focus.
+        // Close on focus loss
         if self.frame_count > 2 {
             let is_focused = ctx.input(|i| i.focused);
             if !is_focused {
@@ -66,19 +58,19 @@ impl eframe::App for OcrApp {
             }
         }
 
-        // --- Central Panel ---
-        let panel_response = egui::CentralPanel::default()
+        // Central Panel - measure content height
+        let inner_response = egui::CentralPanel::default()
             .frame(egui::Frame {
-                fill: egui::Color32::from_rgba_premultiplied(28, 28, 32, 250),
+                fill: egui::Color32::from_rgb(28, 28, 32),
                 inner_margin: egui::Margin::same(16.0),
-                rounding: egui::Rounding::same(12.0),
+                stroke: egui::Stroke::new(0.0, egui::Color32::TRANSPARENT),
                 ..Default::default()
             })
             .show(ctx, |ui| {
                 if self.is_translating {
-                    // --- Loading View ---
+                    // Loading View
                     ui.vertical_centered(|ui| {
-                        ui.add_space(ui.available_height() / 2.5);
+                        ui.add_space(40.0);
                         ui.spinner();
                         ui.add_space(10.0);
                         ui.label(
@@ -86,87 +78,106 @@ impl eframe::App for OcrApp {
                                 .size(16.0)
                                 .color(egui::Color32::from_gray(200)),
                         );
+                        ui.add_space(40.0);
                     });
-                    0.0 // Return 0.0 for height when loading
+                    None
                 } else if let Some(data) = &self.translation_data {
-                    // --- Results View ---
-                    let scroll_response = egui::ScrollArea::vertical().show(ui, |ui| {
-                        // 1. Search Term (Original OCR'd Text)
-                        ui.label(
-                            egui::RichText::new(&self.text)
-                                .size(24.0)
-                                .strong()
-                                .color(egui::Color32::WHITE),
-                        );
-                        ui.add(egui::Separator::default().spacing(6.0));
+                    // Results View - use a layout to measure size
+                    let layout_response = ui.vertical(|ui| {
+                        // Set a max width to ensure proper wrapping
+                        ui.set_max_width(500.0 - 32.0); // window width - margins
 
-                        // 2. Google Translate Section
-                        render_section_header(
-                            ui,
-                            &format!("Google ({}):", data.target_lang.to_uppercase()),
-                        );
-                        render_bullet_point(ui, &data.google_translation);
-                        ui.add_space(10.0);
-
-                        // 3. Longdo Dict Section
-                        if let Some(longdo) = &data.longdo_data {
-                            if !longdo.translations.is_empty() {
-                                render_section_header(ui, "Longdo Dict:");
-                                for item in &longdo.translations {
-                                    render_translation_item(ui, item);
-                                }
-                                ui.add_space(10.0);
-                            }
-
-                            // 4. Examples Section
-                            if !longdo.examples.is_empty() {
-                                render_section_header(ui, "Example Sentences (Longdo):");
-                                for ex in longdo.examples.iter().take(2) {
-                                    render_example_item(
-                                        ui,
-                                        ex,
-                                        &data.source_lang,
-                                        &data.target_lang,
-                                    );
-                                }
-                            }
-                        }
-                        ui.min_rect().height() // Return the full content height
+                        render_content(ui, &self.text, data);
                     });
-                    scroll_response.inner
+
+                    Some(layout_response.response.rect.height())
                 } else {
-                    0.0 // Should not happen, but return 0.0 as a fallback
+                    None
                 }
             });
 
-        // --- Auto-resize window after translation is done ---
-        let has_resized_id = egui::Id::new("has_resized");
-        let already_resized = ctx
-            .memory(|m| m.data.get_temp::<bool>(has_resized_id))
-            .unwrap_or(false);
+        // Auto-resize based on measured content
+        if !self.is_translating {
+            if let Some(content_height) = inner_response.inner {
+                let has_resized_id = egui::Id::new("has_auto_resized");
+                let already_resized =
+                    ctx.memory(|m| m.data.get_temp::<bool>(has_resized_id).unwrap_or(false));
 
-        if !self.is_translating && !already_resized {
-            let content_height = panel_response.inner;
-            // The frame has a 16.0 margin on top and bottom
-            let mut desired_height = content_height + 16.0 * 2.0;
-            let current_width = ctx.screen_rect().width();
+                if !already_resized && self.frame_count > 1 {
+                    // Add margins (16 * 2)
+                    let total_height = content_height + 32.0;
 
-            // Enforce the maximum height (should match the value in main.rs)
-            let max_height = 800.0;
-            desired_height = desired_height.min(max_height);
+                    // Clamp between min and max
+                    let min_height = 150.0;
+                    let max_height = 800.0;
+                    let desired_height = total_height.clamp(min_height, max_height);
 
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                current_width,
-                desired_height,
-            )));
+                    // Get current width
+                    let current_width = ctx.screen_rect().width();
 
-            // Mark as resized to avoid doing it every frame
-            ctx.memory_mut(|m| m.data.insert_temp(has_resized_id, true));
+                    // Resize
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                        current_width,
+                        desired_height,
+                    )));
+
+                    // Mark as resized
+                    ctx.memory_mut(|m| {
+                        m.data.insert_temp(has_resized_id, true);
+                    });
+
+                    ctx.request_repaint();
+                }
+            }
         }
 
         // Request repaint if still translating
         if self.is_translating {
             ctx.request_repaint();
+        }
+    }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [28.0 / 255.0, 28.0 / 255.0, 32.0 / 255.0, 1.0]
+    }
+}
+
+// --- Content Rendering ---
+
+fn render_content(ui: &mut egui::Ui, text: &str, data: &CombinedTranslationData) {
+    // 1. Search Term
+    ui.label(
+        egui::RichText::new(text)
+            .size(24.0)
+            .strong()
+            .color(egui::Color32::WHITE),
+    );
+    ui.add(egui::Separator::default().spacing(6.0));
+
+    // 2. Google Translate
+    render_section_header(
+        ui,
+        &format!("Google ({}):", data.target_lang.to_uppercase()),
+    );
+    render_bullet_point(ui, &data.google_translation);
+    ui.add_space(10.0);
+
+    // 3. Longdo Dict
+    if let Some(longdo) = &data.longdo_data {
+        if !longdo.translations.is_empty() {
+            render_section_header(ui, "Longdo Dict:");
+            for item in &longdo.translations {
+                render_translation_item(ui, item);
+            }
+            ui.add_space(10.0);
+        }
+
+        // 4. Examples
+        if !longdo.examples.is_empty() {
+            render_section_header(ui, "Example Sentences (Longdo):");
+            for ex in longdo.examples.iter().take(2) {
+                render_example_item(ui, ex, &data.source_lang, &data.target_lang);
+            }
         }
     }
 }
@@ -175,19 +186,13 @@ impl eframe::App for OcrApp {
 
 fn setup_visuals(ctx: &egui::Context) {
     let mut visuals = egui::Visuals::dark();
-    visuals.window_rounding = egui::Rounding::from(12.0);
-    visuals.window_shadow = egui::epaint::Shadow {
-        offset: egui::Vec2::new(0.0, 2.0),
-        blur: 12.0,
-        spread: 0.0,
-        color: egui::Color32::from_black_alpha(100),
-    };
-
-    visuals.panel_fill = egui::Color32::from_rgba_premultiplied(28, 28, 32, 250);
+    visuals.window_shadow = egui::epaint::Shadow::NONE;
+    visuals.panel_fill = egui::Color32::from_rgb(28, 28, 32);
+    visuals.window_fill = egui::Color32::from_rgb(28, 28, 32);
+    visuals.extreme_bg_color = egui::Color32::from_rgb(28, 28, 32);
     visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(50, 80, 120);
     visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(60, 100, 150);
     visuals.widgets.active.bg_fill = egui::Color32::from_rgb(70, 110, 170);
-
     ctx.set_visuals(visuals);
 }
 
@@ -242,7 +247,6 @@ fn render_example_item(
     source_lang: &str,
     target_lang: &str,
 ) {
-    // English Line
     ui.horizontal_wrapped(|ui| {
         ui.label("•");
         ui.label(
@@ -253,9 +257,7 @@ fn render_example_item(
         ui.label(egui::RichText::new(&item.en).color(egui::Color32::from_gray(210)));
     });
 
-    // Thai Line, indented to show it's related to the line above
     ui.horizontal_wrapped(|ui| {
-        // Calculate indent based on the width of the bullet point and spacing
         let indent = ui.style().spacing.icon_width + ui.style().spacing.item_spacing.x;
         ui.add_space(indent);
         ui.label(
@@ -265,5 +267,5 @@ fn render_example_item(
         );
         ui.label(egui::RichText::new(&item.th).color(egui::Color32::from_gray(230)));
     });
-    ui.add_space(8.0); // Add a bit more space between full examples
+    ui.add_space(8.0);
 }

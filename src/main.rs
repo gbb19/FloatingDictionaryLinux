@@ -150,8 +150,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_inner_size([500.0, 200.0])
             .with_min_inner_size([400.0, 150.0])
             .with_max_inner_size([800.0, 800.0])
-            .with_decorations(false)
-            .with_transparent(true)
+            .with_decorations(true)
+            .with_transparent(false)
             .with_resizable(true),
         ..Default::default()
     };
