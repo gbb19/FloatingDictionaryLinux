@@ -16,7 +16,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
       in
       {
-        # Development shell (เดิม)
+        # Development shell
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             rustc
@@ -46,11 +46,10 @@
           BINDGEN_EXTRA_CLANG_ARGS = "-I${pkgs.libclang.lib}/lib/clang/${pkgs.libclang.version}/include";
         };
 
-        # ✨ เพิ่มส่วนนี้ - Package build
+        # Package build
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "floating-dictionary-linux";
           version = "0.2.0";
-
           src = ./.;
 
           cargoLock = {
@@ -60,6 +59,7 @@
           nativeBuildInputs = with pkgs; [
             pkg-config
             clang
+            makeWrapper # ✨ เพิ่มตรงนี้
           ];
 
           buildInputs = with pkgs; [
@@ -73,10 +73,24 @@
             xorg.libXi
             vulkan-loader
             libGL
+            openssl
           ];
 
           LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
           BINDGEN_EXTRA_CLANG_ARGS = "-I${pkgs.libclang.lib}/lib/clang/${pkgs.libclang.version}/include";
+
+          # ✨ เพิ่มส่วนนี้ - wrap binary ให้หา libraries
+          postInstall = ''
+            wrapProgram $out/bin/floating-dictionary-linux \
+              --prefix LD_LIBRARY_PATH : ${
+                pkgs.lib.makeLibraryPath [
+                  pkgs.wayland
+                  pkgs.libxkbcommon
+                  pkgs.vulkan-loader
+                  pkgs.libGL
+                ]
+              }
+          '';
         };
       }
     );
